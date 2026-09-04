@@ -26,6 +26,7 @@ const fmt_price = (n: number) =>
 function BookingModal({ booking, onClose }: { booking: any; onClose: () => void }) {
   if (!booking) return null;
   return (
+    //Comment
     <Modal isOpen={!!booking} onClose={onClose} title={`Booking — ${booking.bookingRef}`} maxWidth="max-w-md">
       <div className="space-y-3 text-sm">
         <Row label="Reference"><span className="font-mono font-bold text-indigo-600">{booking.bookingRef}</span></Row>
