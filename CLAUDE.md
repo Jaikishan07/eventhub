@@ -1,80 +1,109 @@
-# EventHub - Project Conventions for Claude Code
+# CLAUDE.md
 
-## Project Overview
-EventHub is a full-stack event ticket booking platform built for QA training. Users can browse events, book tickets, manage bookings, and create events. Each user operates in an isolated sandbox.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Tech Stack
-- **Frontend**: Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS, React Query v5
-- **Backend**: Express.js, Prisma ORM, MySQL 8+
-- **Auth**: JWT (7-day expiry), bcryptjs
-- **Testing**: Playwright E2E (Chromium only)
+## What This Repo Is
 
-## Project Structure
-```
-eventhub/
-├── frontend/          # Next.js 14 app (port 3000)
-│   ├── app/           # Pages (App Router)
-│   ├── components/    # React components
-│   ├── lib/           # API clients, hooks, providers
-│   └── types/         # TypeScript interfaces
-├── backend/           # Express API (port 3001)
-│   ├── src/
-│   │   ├── routes/        # HTTP endpoints
-│   │   ├── controllers/   # Request handlers
-│   │   ├── services/      # Business logic
-│   │   ├── repositories/  # Data access (Prisma)
-│   │   ├── validators/    # Input validation
-│   │   └── middleware/     # Auth, error handling
-│   └── prisma/            # Schema + seed
-├── tests/             # Playwright E2E tests
-├── .claude/
-│   ├── commands/      # Custom slash commands (agents)
-│   └── docs/          # Skill documents (reference guides)
-└── playwright.config.ts
-```
+EventHub is a QA practice platform by Rahul Shetty Academy. The **backend is hosted** at `https://eventhub.rahulshettyacademy.com` — there is no local backend to run. Users register for a personal sandboxed account, then write Playwright E2E tests against the hosted app.
 
-## Architecture Pattern
-Backend follows layered architecture: Routes → Controllers → Services → Repositories → Database
+The frontend source code lives in `frontend/` and can run locally against the hosted API, but the primary use of this repo is as a workspace for writing tests.
 
-## Commands to Run
+## Commands
+
 ```bash
-npm run dev          # Start frontend + backend concurrently
-npm run seed         # Seed 10 static events
-npm run test         # Run all Playwright tests
-npm run test:ui      # Playwright with UI mode
-npx playwright test tests/<file>.spec.js --reporter=line  # Run single test
+# Run all Playwright tests (against hosted app)
+npm run test
+
+# Run Playwright with visual UI
+npm run test:ui
+
+# Run a single test file
+npx playwright test tests/<file>.spec.js --reporter=line
+
+# View the last HTML report
+npm run test:report
+
+# Run frontend dev server only (requires frontend/.env.local to point to hosted API)
+npm run dev --prefix frontend
+
+# Install dependencies
+npm run setup
 ```
 
-## Testing Conventions
-- Test files go in `tests/` as `<feature-name>.spec.js`
-- Follow guidelines in `.claude/docs/playwright-best-practices.md`
-- Locator priority: data-testid > role > label/placeholder > ID > CSS class
-- No `page.waitForTimeout()` — use `expect().toBeVisible()`
-- Tests must be self-contained (login → action → assert)
-- Use test accounts: `rahulshetty1@gmail.com` / `Magiclife1!`
+## Playwright Configuration
 
-## Key Business Rules
-- Max 6 user-created events (FIFO pruning on overflow)
-- Max 9 bookings per user (FIFO pruning on overflow)
-- Booking ref first character = event title first character (uppercase)
-- Seat count reduces on booking, restores on cancellation
-- Refund eligibility: 1 ticket = eligible, >1 ticket = not eligible (client-side)
-- Cross-user booking access returns "Access Denied"
-- Static events (seeded) are immutable
+Tests are in `tests/` (create this directory). The `playwright.config.ts` already sets:
+- `baseURL`: `https://eventhub.rahulshettyacademy.com`
+- Browser: Chromium only, headless
+- `fullyParallel: false`, `retries: 0`
+- Screenshots/video on failure only
 
-## Custom Slash Commands (Agents)
-- `/generate-tests <feature>` — AI Test Automation Engineer: generates Playwright tests
-- `/review-tests <file>` — AI Code Reviewer: reviews test code quality
-- `/create-scenarios <area>` — AI Functional Tester: creates test scenario documents
-- `/test-strategy <scenarios>` — AI Test Architect: assigns tests to optimal pyramid layers
+Each test must be self-contained: login → action → assert. Use test accounts you register at the hosted app — do **not** use `rahulshetty1@gmail.com` (blocked by the app to nudge users to register their own).
 
-## Skill Documents
-- `.claude/docs/playwright-best-practices.md` — Playwright testing standards
-- `.claude/docs/eventhub-domain.md` — Domain knowledge and business rules
+## Frontend Architecture
 
-## Code Style
-- Backend: JavaScript with JSDoc, Express patterns
-- Frontend: TypeScript, React hooks, Tailwind utility classes
-- Tests: JavaScript with Playwright test runner
-- Use meaningful variable names, add step comments in tests
-- Keep functions focused and single-responsibility
+The pages in `frontend/app/` import from `@/components/` and `@/lib/` which are not committed to this repo. If running the frontend locally, those directories need to be populated. The page files are the authoritative reference for what the app does.
+
+Auth is handled via `@/lib/hooks/useAuth` — JWT stored in browser, 7-day expiry. The root layout wraps children in `AuthGuard` and `AppShell`. Login/register pages bypass the guard.
+
+The `@/lib/api/client.js` exports `BASE_URL` (from `NEXT_PUBLIC_API_URL` env var) and an Axios instance with interceptors. API calls flow through React Query hooks (`useEvents`, `useBookings`) which key their caches on filter objects.
+
+## Business Rules (Critical for Tests)
+
+- **Sandbox limits**: max 9 bookings per user, max 6 user-created events; oldest is auto-pruned on overflow (FIFO)
+- **Booking ref format**: `EVT-XXXXXX`, first character matches the event title's first character (uppercase)
+- **Seat management**: `availableSeats` decrements on booking, restores on cancellation (atomic)
+- **Refund eligibility**: 1 ticket = eligible; >1 ticket = not eligible (client-side check only)
+- **Static/Featured events**: seeded events (`isStatic: true`) are immutable — no edit/delete, always visible
+- **Cross-user isolation**: accessing another user's booking returns "Access Denied"
+- **Password rules**: min 8 chars, one uppercase, one number, one special character
+
+## Test Selectors (`data-testid` attributes)
+
+| `data-testid` | Element |
+|---|---|
+| `event-card` | Each event card in listings |
+| `book-now-btn` | "Book Now" link on event card |
+| `quantity-input` | Ticket quantity in booking form |
+| `customer-name` | Full name input |
+| `customer-email` | Email input |
+| `customer-phone` | Phone input |
+| `confirm-booking-btn` | Submit booking button |
+| `booking-ref` | Booking reference shown post-confirmation |
+| `booking-card` | Each booking card in My Bookings |
+| `cancel-booking-btn` | Cancel booking button |
+| `confirm-dialog-yes` | Confirm button in any confirmation dialog |
+| `admin-event-form` | Admin create/edit event form |
+| `event-title-input` | Title field in admin form |
+| `add-event-btn` | Submit button in admin form |
+| `event-table-row` | Each row in admin events table |
+| `edit-event-btn` | Edit button in admin table row |
+| `delete-event-btn` | Delete button in admin table row |
+| `nav-events` | Navbar "Events" link |
+| `nav-bookings` | Navbar "My Bookings" link |
+| `register-email` | Email field on register page |
+| `register-password` | Password field on register page |
+| `register-btn` | Submit button on register page |
+
+Some elements also carry plain `id` attributes matching their `data-testid` name, and CSS classes like `booking-ref`, `confirm-booking-btn`, `ticket-count` — prefer `data-testid` selectors.
+
+## API Reference
+
+Base URL: `https://eventhub.rahulshettyacademy.com/api` (Swagger UI at `/api/docs`)
+
+| Method | Endpoint | Auth | Notes |
+|---|---|---|---|
+| `POST` | `/auth/login` | No | Returns JWT |
+| `POST` | `/auth/register` | No | Creates sandbox account |
+| `GET` | `/events` | Yes | `?search=&category=&city=&page=&limit=` |
+| `GET` | `/events/:id` | Yes | |
+| `POST` | `/events` | Yes | Creates event (counts toward 6-event limit) |
+| `PUT` | `/events/:id` | Yes | User-created events only |
+| `DELETE` | `/events/:id` | Yes | Cascades bookings |
+| `GET` | `/bookings` | Yes | `?status=&page=&limit=` |
+| `GET` | `/bookings/:id` | Yes | |
+| `GET` | `/bookings/ref/:ref` | Yes | Lookup by `EVT-XXXXXX` ref |
+| `POST` | `/bookings` | Yes | Body: `{eventId, customerName, customerEmail, customerPhone, quantity}` |
+| `DELETE` | `/bookings/:id` | Yes | Cancel; restores seats |
+| `DELETE` | `/bookings` | Yes | Clear all user bookings |
+| `GET` | `/config` | No | Returns `{showExploreLinks}` feature flag |
